@@ -1040,11 +1040,18 @@ void getAres() {
 void readSENtralQuatData(float * destination)
 {
   uint8_t rawData[16];  // x/y/z quaternion register data stored here
+  uint32_t temp[4] = {0, 0, 0, 0};
   readBytes(EM7180_ADDRESS, EM7180_QX, 16, &rawData[0]);       // Read the sixteen raw data registers into data array
-  destination[0] = (float) (((int32_t)rawData[3] << 24) | (int32_t)rawData[2] << 16 | (int32_t)rawData[1] << 8 | rawData[0]) ;  // Turn the MSB and LSB into a signed 16-bit value
-  destination[1] = (float) (((int32_t)rawData[7] << 24) | (int32_t)rawData[6] << 16 | (int32_t)rawData[5] << 8 | rawData[4]) ; 
-  destination[2] = (float) (((int32_t)rawData[11] << 24) | (int32_t)rawData[10] << 16 | (int32_t)rawData[9] << 8 | rawData[8]) ;
-  destination[3] = (float) (((int32_t)rawData[15] << 24) | (int32_t)rawData[14] << 16 | (int32_t)rawData[13] << 8 | rawData[12]) ;
+  temp[0] = (uint32_t) ((uint32_t)rawData[3] << 24 | (uint32_t)rawData[2] << 16 |(uint32_t)rawData[1] << 8 |  rawData[0]);  // Turn the MSB and LSB into a signed 16-bit value
+  temp[1] = (uint32_t) ((uint32_t)rawData[7] << 24 | (uint32_t)rawData[6] << 16 |(uint32_t)rawData[5] << 8 |  rawData[4]); 
+  temp[2] = (uint32_t) ((uint32_t)rawData[11] << 24 | (uint32_t)rawData[10] << 16 |(uint32_t)rawData[9] << 8 |  rawData[8]);
+  temp[3] = (uint32_t) ((uint32_t)rawData[15] << 24 | (uint32_t)rawData[14] << 16 |(uint32_t)rawData[13] << 8 |  rawData[12]);
+
+  destination[0] = (float) temp[0];
+  destination[1] = (float) temp[1]; 
+  destination[2] = (float) temp[2]; 
+  destination[3] = (float) temp[3];
+
 }
 
 void readSENtralAccelData(int16_t * destination)
