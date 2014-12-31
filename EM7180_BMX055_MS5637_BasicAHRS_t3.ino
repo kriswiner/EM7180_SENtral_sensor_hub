@@ -59,8 +59,8 @@ Adafruit_PCD8544 display = Adafruit_PCD8544(7, 6, 5, 3, 4);
 
 // See MS5637-02BA03 Low Voltage Barometric Pressure Sensor Data Sheet http://www.meas-spec.com/downloads/MS5637-02BA03.pdf
 #define MS5637_RESET      0x1E
-#define NS5637_CONVERT_D1 0x40
-#define NS5637_CONVERT_D2 0x50
+#define MS5637_CONVERT_D1 0x40
+#define MS5637_CONVERT_D2 0x50
 #define MS5637_ADC_READ   0x00
 
 // BMX055 data sheet http://ae-bst.resource.bosch.com/media/products/dokumente/bmx055/BST-BMX055-DS000-01v2.pdf
@@ -402,7 +402,7 @@ double Temperature, Pressure; // stores MS5637 pressures sensor pressure and tem
 // BMX055 variables
 int16_t accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
 int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
-int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output
+int16_t magCount[3];    // Stores the 13/15-bit signed magnetometer sensor output
 float Quat[4] = {0, 0, 0, 0}; // quaternion data register
 float gyroBias[3] = {0, 0, 0}, accelBias[3] = {0, 0, 0}, magBias[3] = {0, 0, 0};  // Bias corrections for gyro, accelerometer, mag
 int16_t tempCount;            // temperature raw count output
@@ -426,13 +426,13 @@ float zeta = sqrt(3.0f / 4.0f) * GyroMeasDrift;   // compute zeta, the other fre
 #define Ki 0.0f
 
 uint32_t delt_t = 0, count = 0, sumCount = 0;  // used to control display output rate
-float pitch, yaw, roll;
+float pitch, yaw, roll, Yaw, Pitch, Roll;
 float deltat = 0.0f, sum = 0.0f;          // integration interval for both filter schemes
 uint32_t lastUpdate = 0, firstUpdate = 0; // used to calculate integration interval
 uint32_t Now = 0;                         // used to calculate integration interval
 
 float ax, ay, az, gx, gy, gz, mx, my, mz; // variables to hold latest sensor data values 
-float q[4] = {0.0f, 0.0f, 0.0f, 1.0f};    // vector to hold quaternion
+float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
 float eInt[3] = {0.0f, 0.0f, 0.0f};       // vector to hold integral error for Mahony method
 
 bool passThru = false;
@@ -446,29 +446,6 @@ void setup()
   delay(5000);
   Serial.begin(38400);
 
- // Set up the interrupt pin, its set as active high, push-pull
-  pinMode(myLed, OUTPUT);
-  digitalWrite(myLed, HIGH);
-  
-  display.begin(); // Initialize the display
-  display.setContrast(58); // Set the contrast
-  
-// Start device display with ID of sensor
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(0,0); display.print("EM7180");
-  display.setTextSize(1);
-  display.setCursor(0, 20); display.print("BMX055");
-  display.setCursor(0, 30); display.print("motion sensor");
-  display.setCursor(20,40); display.print("1 mg LSB");
-  display.display();
-  delay(1000);
-
-// Set up for data display
-  display.setTextSize(1); // Set text size to normal, 2 is twice normal etc.
-  display.setTextColor(BLACK); // Set pixel color; 1 on the monochrome screen
-  display.clearDisplay();   // clears the screen and buffer
-  
   I2Cscan(); // should detect SENtral at 0x28
   
   // Read SENtral device information
@@ -482,12 +459,6 @@ void setup()
   Serial.print("EM7180 ProductID: 0x"); Serial.print(PID, HEX); Serial.println(" Should be: 0x80");
   uint8_t RID = readByte(EM7180_ADDRESS, EM7180_RevisionID);
   Serial.print("EM7180 RevisionID: 0x"); Serial.print(RID, HEX); Serial.println(" Should be: 0x02");
-  uint8_t FF = readByte(EM7180_ADDRESS, EM7180_FeatureFlags);
-  Serial.println("EM7180 extra Features: "); 
-  if(FF & 0x01) Serial.println("Barometer supported");
-  if(FF & 0x02) Serial.println("Humidity sensor supported");
-  if(FF & 0x04) Serial.println("Temperature sensor supported");
-  
   
   delay(1000); // give some time to read the screen
 
@@ -516,68 +487,55 @@ void setup()
    delay(1000); // give some time to read the screen
     
   // Set up the SENtral as sensor bus in normal operating mode
-  if(!passThru) {
-    
-  // Enter EM7180 initialized state
-  writeByte(EM7180_ADDRESS, EM7180_HostControl, 0x00); // set SENtral in initialized state to configure registers
+if(!passThru) {
+// Enter EM7180 initialized state
+writeByte(EM7180_ADDRESS, EM7180_HostControl, 0x00); // set SENtral in initialized state to configure registers
+writeByte(EM7180_ADDRESS, EM7180_PassThruControl, 0x00); // make sure pass through mode is off
+// Set accel/gyro/mage desired ODR rates
+writeByte(EM7180_ADDRESS, EM7180_QRateDivisor, 0x02); // 100 Hz
+writeByte(EM7180_ADDRESS, EM7180_MagRate, 0x1E); // 30 Hz
+writeByte(EM7180_ADDRESS, EM7180_AccelRate, 0x0A); // 100/10 Hz
+writeByte(EM7180_ADDRESS, EM7180_GyroRate, 0x14); // 200/10 Hz
+// Configure operating mode
+writeByte(EM7180_ADDRESS, EM7180_AlgorithmControl, 0x00); // read scale sensor data
+// Enable interrupt to host upon certain events
+// choose interrupts when quaternions updated (0x04), an error occurs (0x02), or the SENtral needs to be reset(0x01)
+writeByte(EM7180_ADDRESS, EM7180_EnableEvents, 0x07);
+// Enable EM7180 run mode
+writeByte(EM7180_ADDRESS, EM7180_HostControl, 0x01); // set SENtral in normal run mode
+delay(100);
 
-  writeByte(EM7180_ADDRESS, EM7180_PassThruControl, 0x00); // make sure pass through mode is off
- // Set accel/gyro/mage desired ODR rates
-  writeByte(EM7180_ADDRESS, EM7180_QRateDivisor, 0x02);   // 100 Hz
-  writeByte(EM7180_ADDRESS, EM7180_MagRate, 0x1E);   // 30 Hz
-  writeByte(EM7180_ADDRESS, EM7180_AccelRate, 0x0A); // 100/10 Hz
-  writeByte(EM7180_ADDRESS, EM7180_GyroRate, 0x14);  // 200/10 Hz
-  // Configure operating mode
-  writeByte(EM7180_ADDRESS, EM7180_AlgorithmControl, 0x00); // read scale sensor data
-  // Enable interrupt to host upon certain events
-  // choose interrupts when quaternions updated (0x04), an error occurs (0x02), or the SENtral needs to be reset(0x01)
-  writeByte(EM7180_ADDRESS, EM7180_EnableEvents, 0x07);
-
-  // Enable EM7180 run mode
-  writeByte(EM7180_ADDRESS, EM7180_HostControl, 0x01); // set SENtral in normal run mode
-  delay(100);
-  
-  // Read EM7180 status
-  uint8_t runStatus = readByte(EM7180_ADDRESS, EM7180_RunStatus);
-  if(runStatus & 0x01) Serial.println(" EM7180 run status = normal mode"); 
-  uint8_t algoStatus = readByte(EM7180_ADDRESS, EM7180_AlgorithmStatus);
-  if(algoStatus & 0x01) Serial.println(" EM7180 standby status");
-  if(algoStatus & 0x02) Serial.println(" EM7180 algorithm slow");
-  if(algoStatus & 0x04) Serial.println(" EM7180 in stillness mode");
-  if(algoStatus & 0x08) Serial.println(" EM7180 mag calibration completed");
-  if(algoStatus & 0x10) Serial.println(" EM7180 magnetic anomaly detected");
-  if(algoStatus & 0x20) Serial.println(" EM7180 unreliable sensor data");
-  uint8_t passthruStatus = readByte(EM7180_ADDRESS, EM7180_PassThruStatus);
-  if(passthruStatus & 0x01) Serial.print(" EM7180 in passthru mode!"); 
-  uint8_t eventStatus = readByte(EM7180_ADDRESS, EM7180_EventStatus);
-  if(eventStatus & 0x01) Serial.println(" EM7180 CPU reset"); 
-  if(eventStatus & 0x02) Serial.println(" EM7180 Error"); 
-  if(eventStatus & 0x04) Serial.println(" EM7180 new quaternion result"); 
-  if(eventStatus & 0x08) Serial.println(" EM7180 new mag result"); 
-  if(eventStatus & 0x10) Serial.println(" EM7180 new accel result"); 
-  if(eventStatus & 0x20) Serial.println(" EM7180 new gyro result"); 
+// Read EM7180 status
+uint8_t runStatus = readByte(EM7180_ADDRESS, EM7180_RunStatus);
+if(runStatus & 0x01) Serial.println(" EM7180 run status = normal mode");
+uint8_t algoStatus = readByte(EM7180_ADDRESS, EM7180_AlgorithmStatus);
+if(algoStatus & 0x01) Serial.println(" EM7180 standby status");
+if(algoStatus & 0x02) Serial.println(" EM7180 algorithm slow");
+if(algoStatus & 0x04) Serial.println(" EM7180 in stillness mode");
+if(algoStatus & 0x08) Serial.println(" EM7180 mag calibration completed");
+if(algoStatus & 0x10) Serial.println(" EM7180 magnetic anomaly detected");
+if(algoStatus & 0x20) Serial.println(" EM7180 unreliable sensor data");
+uint8_t passthruStatus = readByte(EM7180_ADDRESS, EM7180_PassThruStatus);
+if(passthruStatus & 0x01) Serial.print(" EM7180 in passthru mode!");
+uint8_t eventStatus = readByte(EM7180_ADDRESS, EM7180_EventStatus);
+if(eventStatus & 0x01) Serial.println(" EM7180 CPU reset");
+if(eventStatus & 0x02) Serial.println(" EM7180 Error");
+if(eventStatus & 0x04) Serial.println(" EM7180 new quaternion result");
+if(eventStatus & 0x08) Serial.println(" EM7180 new mag result");
+if(eventStatus & 0x10) Serial.println(" EM7180 new accel result");
+if(eventStatus & 0x20) Serial.println(" EM7180 new gyro result"); 
   
   delay(1000); // give some time to read the screen
   
   // Check sensor status
   uint8_t sensorStatus = readByte(EM7180_ADDRESS, EM7180_SensorStatus);
-  if(sensorStatus & 0x01) Serial.println("Magnetometer not acknowledging!");
-  if(sensorStatus & 0x02) Serial.println("Accelerometer not acknowledging!");
-  if(sensorStatus & 0x04) Serial.println("Gyro not acknowledging!");
-  if(sensorStatus & 0x10) Serial.println("Magnetometer ID not recognized!");
-  if(sensorStatus & 0x20) Serial.println("Accelerometer ID not recognized!");
-  if(sensorStatus & 0x40) Serial.println("Gyro ID not recognized!");
-  
-  // check error sttus
-  uint8_t errorStatus = readByte(EM7180_ADDRESS, EM7180_ErrorRegister);
-  if(errorStatus & 0x11) Serial.println("Magnetometer failure!");
-  if(errorStatus & 0x12) Serial.println("Accelerometer failure!");
-  if(errorStatus & 0x14) Serial.println("Gyro failure!");
-  if(errorStatus & 0x21) Serial.println("Magnetometer initialization failure!");
-  if(errorStatus & 0x22) Serial.println("Accelerometer initialization failure!");
-  if(errorStatus & 0x24) Serial.println("Gyro initialization failure!");
-  if(errorStatus & 0x30) Serial.println("Math error!");
-  if(errorStatus & 0x80) Serial.println("Invalid sample rate!");
+  Serial.print(" EM7180 sensor status = "); Serial.println(sensorStatus);
+  if(sensorStatus & 0x01) Serial.print("Magnetometer not acknowledging!");
+  if(sensorStatus & 0x02) Serial.print("Accelerometer not acknowledging!");
+  if(sensorStatus & 0x04) Serial.print("Gyro not acknowledging!");
+  if(sensorStatus & 0x10) Serial.print("Magnetometer ID not recognized!");
+  if(sensorStatus & 0x20) Serial.print("Accelerometer ID not recognized!");
+  if(sensorStatus & 0x40) Serial.print("Gyro ID not recognized!");
   
   Serial.print("Actual MagRate = "); Serial.print(readByte(EM7180_ADDRESS, EM7180_ActualMagRate)); Serial.println(" Hz"); 
   Serial.print("Actual AccelRate = "); Serial.print(10*readByte(EM7180_ADDRESS, EM7180_ActualAccelRate)); Serial.println(" Hz"); 
@@ -603,6 +561,29 @@ void setup()
    for (int i = 0; i < 128; i++) {
      Serial.print(data[i], HEX); Serial.print(" ");
    }
+
+  // Set up the interrupt pin, its set as active high, push-pull
+  pinMode(myLed, OUTPUT);
+  digitalWrite(myLed, HIGH);
+  
+  display.begin(); // Initialize the display
+  display.setContrast(58); // Set the contrast
+  
+// Start device display with ID of sensor
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setCursor(0,0); display.print("BMX055");
+  display.setTextSize(1);
+  display.setCursor(0, 20); display.print("9-DOF 16-bit");
+  display.setCursor(0, 30); display.print("motion sensor");
+  display.setCursor(20,40); display.print("1 mg LSB");
+  display.display();
+  delay(1000);
+
+// Set up for data display
+  display.setTextSize(1); // Set text size to normal, 2 is twice normal etc.
+  display.setTextColor(BLACK); // Set pixel color; 1 on the monochrome screen
+  display.clearDisplay();   // clears the screen and buffer
 
   // Read the BMX-055 WHO_AM_I registers, this is a good test of communication
   Serial.println("BMX055 accelerometer...");
@@ -717,15 +698,14 @@ void setup()
 }
 }
 
+
 void loop()
 {  
   if(!passThru) {
     
   // Check event status register, way to chech data ready by polling rather than interrupt
   uint8_t eventStatus = readByte(EM7180_ADDRESS, EM7180_EventStatus); // reading clears the register
- 
-  if(eventStatus & 0x01) Serial.print("CPU Reset required");
- 
+  
    // Check for errors
   if(eventStatus & 0x02) { // error detected, what is it?
   
@@ -756,7 +736,7 @@ void loop()
     az = (float)accelCount[2]*0.000488;  
   }
   
-   if(eventStatus & 0x20) { // new gyro data available
+   if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x20) { // new gyro data available
     readSENtralGyroData(gyroCount);
   
     // Now we'll calculate the gyro value into actual dps's
@@ -765,26 +745,20 @@ void loop()
     gz = (float)gyroCount[2]*0.153;  
    }
 
-  if(eventStatus & 0x08) { // new mag data available
+  if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x08) { // new mag data available
     readSENtralMagData(magCount);
   
-    // Now we'll calculate the mag value into actual mG's
-    mx = (float)magCount[0]*305.176*1000.;  // get actual mG value
-    my = (float)magCount[1]*305.176*1000.;    
-    mz = (float)magCount[2]*305.176*1000.;  
+    // Now we'll calculate the mag value into actual G's
+    mx = (float)magCount[0]*0.305176;  // get actual G value
+    my = (float)magCount[1]*0.305176;    
+    mz = (float)magCount[2]*0.305176;  
    }
    
-    if(eventStatus & 0x04) { // new quaternion data available
+    if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x04) { // new quaternion data available
     readSENtralQuatData(Quat); 
-    
-    q[1] = Quat[0]/4294967296.0; // Qx, normalized to 1
-    q[2] = Quat[1]/4294967296.0; // Qy
-    q[3] = Quat[2]/4294967296.0; // Qz
-    q[0] = Quat[3]/4294967296.0; // Qw
    }
-
   }
-  
+ 
   if(passThru) {
   // If intPin goes high, all data registers have new data
 //  if (digitalRead(intACC2)) {  // On interrupt, read data
@@ -811,8 +785,9 @@ void loop()
     mx = (float)magCount[0]*mRes - magBias[0];  // get actual magnetometer value, this depends on scale being set
     my = (float)magCount[1]*mRes - magBias[1];  
     mz = (float)magCount[2]*mRes - magBias[2]; 
-// }  
-}
+ //   }
+  } 
+ 
  
  // keep track of rates
   Now = micros();
@@ -829,14 +804,14 @@ void loop()
   // in the MPU9250 sensor. This rotation can be modified to allow any convenient orientation convention.
   // This is ok by aircraft orientation standards!  
   // Pass gyro rate as rad/s
-  if(passThru) {MadgwickQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f,  -my,  mx, mz);}
+    MadgwickQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f,  -my,  mx, mz);
 //  if(passThru)MahonyQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, -my, mx, mz);
 
     // Serial print and/or display at 0.5 s rate independent of data rates
     delt_t = millis() - count;
     if (delt_t > 500) { // update LCD once per half-second independent of read rate
 
-    if(SerialDebug) { 
+    if(SerialDebug) {
     Serial.print("ax = "); Serial.print((int)1000*ax);  
     Serial.print(" ay = "); Serial.print((int)1000*ay); 
     Serial.print(" az = "); Serial.print((int)1000*az); Serial.println(" mg");
@@ -847,12 +822,19 @@ void loop()
     Serial.print(" my = "); Serial.print( (int)my); 
     Serial.print(" mz = "); Serial.print( (int)mz); Serial.println(" mG");
     
+    Serial.println("Software quaternions:"); 
     Serial.print("q0 = "); Serial.print(q[0]);
     Serial.print(" qx = "); Serial.print(q[1]); 
     Serial.print(" qy = "); Serial.print(q[2]); 
     Serial.print(" qz = "); Serial.println(q[3]); 
+    Serial.println("Hardware quaternions:"); 
+    Serial.print("Q0 = "); Serial.print(Quat[3]);
+    Serial.print(" Qx = "); Serial.print(Quat[0]); 
+    Serial.print(" Qy = "); Serial.print(Quat[1]); 
+    Serial.print(" Qz = "); Serial.println(Quat[2]); 
     }               
  
+
 // tempCount = readTempData();  // Read the gyro adc values
 //    temperature = ((float) tempCount) / 333.87 + 21.0; // Gyro chip temperature in degrees Centigrade
    // Print temperature in degrees Centigrade      
@@ -901,8 +883,9 @@ void loop()
      Serial.print("Altitude = "); Serial.print(altitude, 2); Serial.println(" feet");
     }
    }
+   
     
-  // Define output variables from updated quaternion (q[0] = qw, q[1] = qx)---these are Tait-Bryan angles, commonly used in aircraft orientation.
+  // Define output variables from updated quaternion---these are Tait-Bryan angles, commonly used in aircraft orientation.
   // In this coordinate system, the positive z-axis is down toward Earth. 
   // Yaw is the angle between Sensor x-axis and Earth magnetic North (or true North if corrected for local declination, looking down on the sensor positive yaw is counterclockwise.
   // Pitch is angle between sensor x-axis and Earth ground plane, toward the Earth is positive, up toward the sky is negative.
@@ -911,6 +894,7 @@ void loop()
   // Tait-Bryan angles as well as Euler angles are non-commutative; that is, the get the correct orientation the rotations must be
   // applied in the correct order which for this configuration is yaw, pitch, and then roll.
   // For more see http://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles which has additional links.
+    //Software AHRS:
     yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);   
     pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
     roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
@@ -918,6 +902,14 @@ void loop()
     yaw   *= 180.0f / PI; 
     yaw   -= 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
     roll  *= 180.0f / PI;
+    //Hardware AHRS:
+    Yaw   = atan2(2.0f * (Quat[0] * Quat[1] + Quat[3] * Quat[2]), Quat[3] * Quat[3] + Quat[0] * Quat[0] - Quat[1] * Quat[1] - Quat[2] * Quat[2]);   
+    Pitch = -asin(2.0f * (Quat[0] * Quat[2] - Quat[3] * Quat[1]));
+    Roll  = atan2(2.0f * (Quat[3] * Quat[0] + Quat[1] * Quat[2]), Quat[3] * Quat[3] - Quat[0] * Quat[0] - Quat[1] * Quat[1] + Quat[2] * Quat[2]);
+    Pitch *= 180.0f / PI;
+    Yaw   *= 180.0f / PI; 
+    Yaw   -= 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+    Roll  *= 180.0f / PI;
      
     // Or define output variable according to the Android system, where heading (0 to 260) is defined by the angle between the y-axis 
     // and True North, pitch is rotation about the x-axis (-180 to +180), and roll is rotation about the y-axis (-90 to +90)
@@ -926,16 +918,23 @@ void loop()
     //
     
     if(SerialDebug) {
-    Serial.print("Yaw, Pitch, Roll: ");
+    Serial.print("Software yaw, pitch, roll: ");
     Serial.print(yaw, 2);
     Serial.print(", ");
     Serial.print(pitch, 2);
     Serial.print(", ");
     Serial.println(roll, 2);
+
+    Serial.print("Hardware Yaw, Pitch, Roll: ");
+    Serial.print(Yaw, 2);
+    Serial.print(", ");
+    Serial.print(Pitch, 2);
+    Serial.print(", ");
+    Serial.println(Roll, 2);
     
     Serial.print("rate = "); Serial.print((float)sumCount/sum, 2); Serial.println(" Hz");
     }
-   
+ /*  
     display.clearDisplay();    
  
     display.setCursor(0, 0); display.print(" x   y   z ");
@@ -964,23 +963,12 @@ void loop()
     display.setCursor(48, 32); display.print((int)(roll)); 
     display.setCursor(66, 32); display.print("ypr");  
   
-    // With these settings the filter is updating at a ~145 Hz rate using the Madgwick scheme and 
-    // >200 Hz using the Mahony scheme even though the display refreshes at only 2 Hz.
-    // The filter update rate is determined mostly by the mathematical steps in the respective algorithms, 
-    // the processor speed (8 MHz for the 3.3V Pro Mini), and the magnetometer ODR:
-    // an ODR of 10 Hz for the magnetometer produce the above rates, maximum magnetometer ODR of 100 Hz produces
-    // filter update rates of 36 - 145 and ~38 Hz for the Madgwick and Mahony schemes, respectively. 
-    // This is presumably because the magnetometer read takes longer than the gyro or accelerometer reads.
-    // This filter update rate should be fast enough to maintain accurate platform orientation for 
-    // stabilization control of a fast-moving robot or quadcopter. Compare to the update rate of 200 Hz
-    // produced by the on-board Digital Motion Processor of Invensense's MPU6050 6 DoF and MPU9150 9DoF sensors.
-    // The 3.3 V 8 MHz Pro Mini is doing pretty well!
-    
+ 
 //    display.setCursor(0, 40); display.print(altitude, 0); display.print("ft"); 
 //    display.setCursor(68, 0); display.print(9.*Temperature/5. + 32., 0); 
     display.setCursor(42, 40); display.print((float) sumCount / (1000.*sum), 2); display.print("kHz"); 
     display.display();
-
+*/
     digitalWrite(myLed, !digitalRead(myLed));
     count = millis(); 
     sumCount = 0;
@@ -1037,20 +1025,28 @@ void getAres() {
   }
 }
 
+float uint32_reg_to_float (uint8_t *buf)
+{
+  union {
+    uint32_t ui32;
+    float f;
+  } u;
+
+  u.ui32 =     (((uint32_t)buf[0]) +
+               (((uint32_t)buf[1]) <<  8) +
+               (((uint32_t)buf[2]) << 16) +
+               (((uint32_t)buf[3]) << 24));
+  return u.f;
+}
+
 void readSENtralQuatData(float * destination)
 {
   uint8_t rawData[16];  // x/y/z quaternion register data stored here
-  uint32_t temp[4] = {0, 0, 0, 0};
   readBytes(EM7180_ADDRESS, EM7180_QX, 16, &rawData[0]);       // Read the sixteen raw data registers into data array
-  temp[0] = (uint32_t) ((uint32_t)rawData[3] << 24 | (uint32_t)rawData[2] << 16 |(uint32_t)rawData[1] << 8 |  rawData[0]);  // Turn the MSB and LSB into a signed 16-bit value
-  temp[1] = (uint32_t) ((uint32_t)rawData[7] << 24 | (uint32_t)rawData[6] << 16 |(uint32_t)rawData[5] << 8 |  rawData[4]); 
-  temp[2] = (uint32_t) ((uint32_t)rawData[11] << 24 | (uint32_t)rawData[10] << 16 |(uint32_t)rawData[9] << 8 |  rawData[8]);
-  temp[3] = (uint32_t) ((uint32_t)rawData[15] << 24 | (uint32_t)rawData[14] << 16 |(uint32_t)rawData[13] << 8 |  rawData[12]);
-
-  destination[0] = (float) temp[0];
-  destination[1] = (float) temp[1]; 
-  destination[2] = (float) temp[2]; 
-  destination[3] = (float) temp[3];
+  destination[0] = uint32_reg_to_float (&rawData[0]);
+  destination[1] = uint32_reg_to_float (&rawData[4]);
+  destination[2] = uint32_reg_to_float (&rawData[8]);
+  destination[3] = uint32_reg_to_float (&rawData[12]);
 
 }
 
