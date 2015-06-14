@@ -1,7 +1,7 @@
 EM7180_SENtral_sensor_hub
 =========================
 
-[https://cloud.githubusercontent.com/assets/6698410/8147322/5626d762-1219-11e5-9cda-015815a06b23.jpg]
+![](https://cloud.githubusercontent.com/assets/6698410/8147322/5626d762-1219-11e5-9cda-015815a06b23.jpg)
 
 There are two kinds of files in this repository. 
 
