@@ -77,6 +77,7 @@ void setup() {
   Wire.begin(I2C_MASTER, 0x00, I2C_PINS_16_17, I2C_PULLUP_EXT, I2C_RATE_400);
   
   Serial.begin(9600);
+  delay(5000);
   
   while (!SD.begin(SD_CS, SPI_HALF_SPEED)) {
     Serial.println("failed to init sd");
@@ -88,28 +89,90 @@ void setup() {
   
 // Put EM7180 SENtral into pass-through mode
   SENtralPassThroughMode();
-
+  delay(1000);
+  
   I2Cscan();
   
-  sd_file.open("/SENTRA~1.FW", O_RDONLY);  
+  sd_file.open("/EM6500.fw", O_RDONLY);  
   Serial.println("File Open!");
   
   uint8_t buffer[128];
-  uint8_t numbytes, MSadd = 0, totnum = 0;
+  uint8_t numbytes= 0, MSadd = 0, totnum = 0;
 
-   Serial.println("writing data to EEPROM");
+   Serial.println("erasing EEPROM");
+     uint8_t eraseBuffer[128] = {
+       0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 
+       0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 
+       0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 
+       0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 
+       0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 
+       0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 
+       0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 
+       0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+       
+   for (MSadd = 0; MSadd < 256; MSadd++) {          // MS address byte, 0 to 255
+     M24512DFMwriteBytes(M24512DFM_DATA_ADDRESS, MSadd, 0x00, 128, eraseBuffer); // write data starting at first byte of page MSadd
+     delay(100);
+     M24512DFMwriteBytes(M24512DFM_DATA_ADDRESS, MSadd, 0x80, 128, eraseBuffer); // write data starting at 128th byte of page MSadd
+     delay(100);
 
+     totnum++;
+     if (MSadd = 255) { break; }
+     Serial.print("totnum"); Serial.println(totnum);
+     Serial.print("MSadd 0x"); Serial.println(MSadd, HEX);
+   }
+   
+   // Verify EEPROM ihas been erased
+   // Read first page of EEPROM
+   uint8_t data[128];
+   M24512DFMreadBytes(M24512DFM_DATA_ADDRESS, 0x00, 0x00, 128, data);
+   Serial.println("EEPROM first page"); 
+
+   for (int i = 0; i < 16; i++) {
+   Serial.println(" ");
+     
+   for (int j = 0; j < 8; j++) {
+     Serial.print(data[i*8 + j], HEX); Serial.print(" ");
+   }
+   }
+   
+   // Read second page of EEPROM
+   M24512DFMreadBytes(M24512DFM_DATA_ADDRESS, 0x00, 0x80, 128, data);
+   Serial.println("");Serial.println("EEPROM second page"); 
+
+   for (int i = 0; i < 16; i++) {
+   Serial.println(" ");
+     
+   for (int j = 0; j < 8; j++) {
+     Serial.print(data[i*8 + j], HEX); Serial.print(" ");
+   }
+   }
+   
+      // Read third page of EEPROM
+   M24512DFMreadBytes(M24512DFM_DATA_ADDRESS, 0x01, 0x00, 128, data);
+   Serial.println("");Serial.println("EEPROM third page"); 
+
+   for (int i = 0; i < 16; i++) {
+   Serial.println(" ");
+     
+   for (int j = 0; j < 8; j++) {
+     Serial.print(data[i*8 + j], HEX); Serial.print(" ");
+   }
+   }
+   
+   // write configuration file to EEPROM
+      Serial.println("writing data to EEPROM");
    for (MSadd = 0; MSadd < 256; MSadd++) {          // MS address byte, 0 to 255
      numbytes = sd_file.read(buffer, 128); // 128 bytes per page, 500 pages
      Serial.print("first two bytes: "); Serial.print("0x"); Serial.print(buffer[0], HEX); Serial.print("0x"); Serial.println(buffer[1], HEX);
      Serial.print("Number of bytes = "); Serial.println(numbytes);  // print number of bytes read
      M24512DFMwriteBytes(M24512DFM_DATA_ADDRESS, MSadd, 0x00, 128, buffer); // write data starting at first byte of page MSadd
-     delay(50);
+     delay(100);
      numbytes = sd_file.read(buffer, 128); // 128 bytes per page, 500 pages
      Serial.print("first two bytes: "); Serial.print("0x"); Serial.print(buffer[0], HEX); Serial.print("0x"); Serial.println(buffer[1], HEX);
      Serial.print("Number of bytes = "); Serial.println(numbytes);  // print number of bytes read
      M24512DFMwriteBytes(M24512DFM_DATA_ADDRESS, MSadd, 0x80, 128, buffer); // write data starting at 128th byte of page MSadd
-     delay(50);
+     delay(100);
 
      if (numbytes < 128) { break; }
      totnum++;
@@ -119,7 +182,6 @@ void setup() {
 
   
   // Read first page of EEPROM
-   uint8_t data[128];
    M24512DFMreadBytes(M24512DFM_DATA_ADDRESS, 0x00, 0x00, 128, data);
    Serial.println("EEPROM first page"); 
 
