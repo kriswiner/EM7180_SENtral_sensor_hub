@@ -9,9 +9,9 @@ The FirmwareUpload.ino file is a sketch that takes the firmware file xxx.fw (~22
 
 The other files are sketches that further configure the SENtral for either normal mode, where it manages the BMX055 or LSM9DS0 or MPU6500+AK8963C sensors as slaves providing scaled sensor output and quaternions,or pass-through mode, where the Teensy microcontroller can directly communicate with the BMX055 or LSM9DS0 or MPU6500+AK8963C motion sensors and the MS5637/BMP280 pressure sensor.
 
-These are the three major motion sensor inputs I am planning to implement in the short term. These will allow ne to test the dependence of the quality of the motion sensor input data on the resulting sensor fusion solution using the same fusion algorithms and fusion engine.
+These are the three major motion sensor inputs I am planning to implement in the short term. These will allow me to test the dependence of the quality of the motion sensor input data on the resulting sensor fusion solution using the same fusion algorithms and fusion engine.
 
-The SENtral is configurable and the firmware, inclusing the sensor fusion algorithms, can be programmed by the (sophisticated) user. It's just not easy.
+The SENtral is configurable and the firmware, including the sensor fusion algorithms, can be programmed by the (sophisticated) user. It's just not easy.
 
 Later, I will add altimetry to the sensor fusion algorithm as well as some other refinements. This is a great platform for testing sensor fusion algorithms and  new motion sensors.
 
