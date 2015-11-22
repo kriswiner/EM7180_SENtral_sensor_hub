@@ -1,7 +1,7 @@
 EM7180_SENtral_sensor_hub
 =========================
 
-![](https://cloud.githubusercontent.com/assets/6698410/8147322/5626d762-1219-11e5-9cda-015815a06b23.jpg)
+![](https://cloud.githubusercontent.com/assets/6698410/11326476/a2b0b744-911f-11e5-82b3-c4b1b24400f6.jpg)
 
 *EM7180 sensor hub with Invensense's MPU6500 gyro/accelerometer, Asahi Kasei's AK8963C magnetometer, and ST's M24512DFC I2C EEPROM on a board directly mountable onto the Teensy Cortex ARM M4 microcontroller.*
 
