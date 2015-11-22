@@ -227,6 +227,10 @@
 #define EM7180_GY                 0x24  // int16_t from registers 0x24-25
 #define EM7180_GZ                 0x26  // int16_t from registers 0x26-27
 #define EM7180_GTIME              0x28  // uint16_t from registers 0x28-29
+#define EM7180_Baro               0x2A  // start of two-byte MS5637 pressure data, 16-bit signed interger
+#define EM7180_BaroTIME           0x2C  // start of two-byte MS5637 pressure timestamp, 16-bit unsigned
+#define EM7180_Temp               0x2E  // start of two-byte MS5637 temperature data, 16-bit signed interger
+#define EM7180_TempTIME           0x30  // start of two-byte MS5637 temperature timestamp, 16-bit unsigned
 #define EM7180_QRateDivisor       0x32  // uint8_t 
 #define EM7180_EnableEvents       0x33
 #define EM7180_HostControl        0x34
@@ -243,11 +247,15 @@
 #define EM7180_ActualMagRate      0x45
 #define EM7180_ActualAccelRate    0x46
 #define EM7180_ActualGyroRate     0x47
+#define EM7180_ActualBaroRate     0x48
+#define EM7180_ActualTempRate     0x49
 #define EM7180_ErrorRegister      0x50
 #define EM7180_AlgorithmControl   0x54
 #define EM7180_MagRate            0x55
 #define EM7180_AccelRate          0x56
 #define EM7180_GyroRate           0x57
+#define EM7180_BaroRate           0x58
+#define EM7180_TempRate           0x59
 #define EM7180_LoadParamByte0     0x60
 #define EM7180_LoadParamByte1     0x61
 #define EM7180_LoadParamByte2     0x62
@@ -266,6 +274,9 @@
 #define EM7180_ResetRequest       0x9B   
 #define EM7180_PassThruStatus     0x9E   
 #define EM7180_PassThruControl    0xA0
+#define EM7180_ACC_LPF_BW         0x5B  //Register GP36
+#define EM7180_GYRO_LPF_BW        0x5C  //Register GP37
+#define EM7180_BARO_LPF_BW        0x5D  //Register GP38
 
 #define EM7180_ADDRESS           0x28   // Address of the EM7180 SENtral sensor hub
 #define M24512DFM_DATA_ADDRESS   0x50   // Address of the 500 page M24512DRC EEPROM data buffer, 1024 bits (128 8-bit bytes) per page
@@ -369,8 +380,8 @@ int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output
 float Quat[4] = {0, 0, 0, 0}; // quaternion data register
 float magCalibration[3] = {0, 0, 0};  // Factory mag calibration and mag bias
 float gyroBias[3] = {0, 0, 0}, accelBias[3] = {0, 0, 0}, magBias[3] = {0, 0, 0}, magScale[3]  = {0, 0, 0};  // Bias corrections for gyro, accelerometer, mag
-int16_t tempCount;            // temperature raw count output
-float   temperature;          // Stores the MPU9250 internal chip temperature in degrees Celsius
+int16_t tempCount, rawPressure, rawTemperature;   // pressure, temperature raw count output
+float   temperature, pressure, altitude; // Stores the MPU9250 internal chip temperature in degrees Celsius
 float SelfTest[6];            // holds results of gyro and accelerometer self test
 
 // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)
@@ -401,7 +412,7 @@ float ax, ay, az, gx, gy, gz, mx, my, mz; // variables to hold latest sensor dat
 float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
 float eInt[3] = {0.0f, 0.0f, 0.0f};       // vector to hold integral error for Mahony method
 
-bool passThru = true;
+bool passThru = false;
 
 void setup()
 {
@@ -413,10 +424,9 @@ void setup()
   Serial.begin(38400);
 
    // Set up the interrupt pin, its set as active high, push-pull
-  pinMode(intPin, INPUT);
   pinMode(myLed, OUTPUT);
-  digitalWrite(myLed, HIGH);
-
+  digitalWrite(myLed, LOW);
+  
   I2Cscan(); // should detect SENtral at 0x28
   
   // Read SENtral device information
@@ -430,6 +440,17 @@ void setup()
   Serial.print("EM7180 ProductID: 0x"); Serial.print(PID, HEX); Serial.println(" Should be: 0x80");
   uint8_t RID = readByte(EM7180_ADDRESS, EM7180_RevisionID);
   Serial.print("EM7180 RevisionID: 0x"); Serial.print(RID, HEX); Serial.println(" Should be: 0x02");
+  
+   delay(1000); // give some time to read the screen
+
+  // Check which sensors can be detected by the EM7180
+  uint8_t featureflag = readByte(EM7180_ADDRESS, EM7180_FeatureFlags);
+    if(featureflag & 0x01)  Serial.println("A barometer is installed");
+    if(featureflag & 0x02)  Serial.println("A humidity sensor is installed");
+    if(featureflag & 0x04)  Serial.println("A temperature sensor is installed");
+    if(featureflag & 0x08)  Serial.println("A custom sensor is installed");
+    if(featureflag & 0x10)  Serial.println("A second custom sensor is installed");
+    if(featureflag & 0x20)  Serial.println("A third custom sensor is installed");
   
   delay(1000); // give some time to read the screen
 
@@ -462,16 +483,26 @@ void setup()
   // Enter EM7180 initialized state
   writeByte(EM7180_ADDRESS, EM7180_HostControl, 0x00); // set SENtral in initialized state to configure registers
   writeByte(EM7180_ADDRESS, EM7180_PassThruControl, 0x00); // make sure pass through mode is off
-  // Set accel/gyro/mage desired ODR rates
+  writeByte(EM7180_ADDRESS, EM7180_HostControl, 0x01); // Force initialize
+  writeByte(EM7180_ADDRESS, EM7180_HostControl, 0x00); // set SENtral in initialized state to configure registers
+  
+  //Setup LPF bandwidth (BEFORE setting ODR's)
+  writeByte(EM7180_ADDRESS, EM7180_ACC_LPF_BW, 0x03); // 41Hz
+  writeByte(EM7180_ADDRESS, EM7180_GYRO_LPF_BW, 0x03); // 41Hz
+ // Set accel/gyro/mage desired ODR rates
   writeByte(EM7180_ADDRESS, EM7180_QRateDivisor, 0x02); // 100 Hz
-  writeByte(EM7180_ADDRESS, EM7180_MagRate, 0x1E); // 30 Hz
-  writeByte(EM7180_ADDRESS, EM7180_AccelRate, 0x0A); // 100/10 Hz
+  writeByte(EM7180_ADDRESS, EM7180_MagRate, 0x64); // 100 Hz
+  writeByte(EM7180_ADDRESS, EM7180_AccelRate, 0x14); // 200/10 Hz
   writeByte(EM7180_ADDRESS, EM7180_GyroRate, 0x14); // 200/10 Hz
+  writeByte(EM7180_ADDRESS, EM7180_BaroRate, 0x80 | 0x32);  // set enable bit and set Baro rate to 25 Hz
+  // writeByte(EM7180_ADDRESS, EM7180_TempRate, 0x19);  // set enable bit and set rate to 25 Hz
+
   // Configure operating mode
   writeByte(EM7180_ADDRESS, EM7180_AlgorithmControl, 0x00); // read scale sensor data
   // Enable interrupt to host upon certain events
-  // choose interrupts when quaternions updated (0x04), an error occurs (0x02), or the SENtral needs to be reset(0x01)
-  writeByte(EM7180_ADDRESS, EM7180_EnableEvents, 0x07);
+  // choose host interrupts when any sensor updated (0x40), new gyro data (0x20), new accel data (0x10),
+  // new mag data (0x08), quaternions updated (0x04), an error occurs (0x02), or the SENtral needs to be reset(0x01)
+ writeByte(EM7180_ADDRESS, EM7180_EnableEvents, 0x07);
   // Enable EM7180 run mode
   writeByte(EM7180_ADDRESS, EM7180_HostControl, 0x01); // set SENtral in normal run mode
   delay(100);
@@ -580,6 +611,8 @@ void setup()
   Serial.print("Actual MagRate = "); Serial.print(readByte(EM7180_ADDRESS, EM7180_ActualMagRate)); Serial.println(" Hz"); 
   Serial.print("Actual AccelRate = "); Serial.print(10*readByte(EM7180_ADDRESS, EM7180_ActualAccelRate)); Serial.println(" Hz"); 
   Serial.print("Actual GyroRate = "); Serial.print(10*readByte(EM7180_ADDRESS, EM7180_ActualGyroRate)); Serial.println(" Hz"); 
+  Serial.print("Actual BaroRate = "); Serial.print(readByte(EM7180_ADDRESS, EM7180_ActualBaroRate)); Serial.println(" Hz"); 
+//  Serial.print("Actual TempRate = "); Serial.print(readByte(EM7180_ADDRESS, EM7180_ActualTempRate)); Serial.println(" Hz"); 
 
   delay(1000); // give some time to read the screen
    
@@ -773,8 +806,19 @@ void loop()
     mz = (float)magCount[2]*0.305176;  
    }
    
-    if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x04) { // new quaternion data available
+ //   if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x04) { // new quaternion data available
     readSENtralQuatData(Quat); 
+ //  }
+
+ // get BMP280 pressure
+   if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x40) { // new baro data available
+ //   Serial.println("new Baro data!");
+    rawPressure = readSENtralBaroData();
+    pressure = (float)rawPressure*0.01f +1013.25f; // pressure in mBar
+
+    // get BMP280 temperature
+    rawTemperature = readSENtralTempData();  
+    temperature = (float) rawTemperature*0.01;  // temperature in degrees C
    }
   }
  
@@ -861,29 +905,11 @@ void loop()
    // Print temperature in degrees Centigrade      
 //    Serial.print("Gyro temperature is ");  Serial.print(temperature, 1);  Serial.println(" degrees C"); // Print T values to tenths of s degree C
     if(passThru) {
-  rawPress =  readBMP280Pressure();
-    Pressure = (float) bmp280_compensate_P(rawPress)/25600.; // Pressure in mbar
+    rawPress =  readBMP280Pressure();
+    pressure = (float) bmp280_compensate_P(rawPress)/25600.; // Pressure in mbar
     rawTemp =   readBMP280Temperature();
-    Temperature = (float) bmp280_compensate_T(rawTemp)/100.;
-
-    float altitude = 145366.45f*(1.0f - pow((Pressure/1013.25f), 0.190284f));
-
-    if(SerialDebug) {
-      Serial.println("BMP280:");
-      Serial.print("Altimeter temperature = "); 
-      Serial.print( Temperature, 2); 
-      Serial.println(" C"); // temperature in degrees Celsius
-      Serial.print("Altimeter temperature = "); 
-      Serial.print(9.*Temperature/5. + 32., 2); 
-      Serial.println(" F"); // temperature in degrees Fahrenheit
-      Serial.print("Altimeter pressure = "); 
-      Serial.print(Pressure, 2);  
-      Serial.println(" mbar");// pressure in millibar
-      Serial.print("Altitude = "); 
-      Serial.print(altitude, 2); 
-      Serial.println(" feet");
-      Serial.println(" ");
-    }
+    temperature = (float) bmp280_compensate_T(rawTemp)/100.;
+  
    }
    
     
@@ -897,20 +923,22 @@ void loop()
   // applied in the correct order which for this configuration is yaw, pitch, and then roll.
   // For more see http://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles which has additional links.
     //Software AHRS:
-    yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);   
+    yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]) + PI;   
     pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
     roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
     pitch *= 180.0f / PI;
     yaw   *= 180.0f / PI; 
     yaw   -= 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+    if(yaw < 0) yaw   += 360.0f; // Ensure yaw stays between 0 and 360
     roll  *= 180.0f / PI;
     //Hardware AHRS:
-    Yaw   = atan2(2.0f * (Quat[1] * Quat[2] + Quat[0] * Quat[3]), Quat[0] * Quat[0] + Quat[1] * Quat[1] - Quat[2] * Quat[2] - Quat[3] * Quat[3]);   
+    Yaw   = atan2(2.0f * (Quat[1] * Quat[2] + Quat[0] * Quat[3]), Quat[0] * Quat[0] + Quat[1] * Quat[1] - Quat[2] * Quat[2] - Quat[3] * Quat[3]) + PI;   
     Pitch = -asin(2.0f * (Quat[1] * Quat[3] - Quat[0] * Quat[2]));
     Roll  = atan2(2.0f * (Quat[0] * Quat[1] + Quat[2] * Quat[3]), Quat[0] * Quat[0] - Quat[1] * Quat[1] - Quat[2] * Quat[2] + Quat[3] * Quat[3]);
     Pitch *= 180.0f / PI;
     Yaw   *= 180.0f / PI; 
     Yaw   -= 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+    if(Yaw < 0) Yaw   += 360.0f ; // Ensure yaw stays between 0 and 360
     Roll  *= 180.0f / PI;
      
     // Or define output variable according to the Android system, where heading (0 to 260) is defined by the angle between the y-axis 
@@ -933,9 +961,30 @@ void loop()
     Serial.print(Pitch, 2);
     Serial.print(", ");
     Serial.println(Roll, 2);
+
+  
+      Serial.println("BMP280:");
+      Serial.print("Altimeter temperature = "); 
+      Serial.print( temperature, 2); 
+      Serial.println(" C"); // temperature in degrees Celsius
+      Serial.print("Altimeter temperature = "); 
+      Serial.print(9.*temperature/5. + 32., 2); 
+      Serial.println(" F"); // temperature in degrees Fahrenheit
+      Serial.print("Altimeter pressure = "); 
+      Serial.print(pressure, 2);  
+      Serial.println(" mbar");// pressure in millibar
+      altitude = 145366.45f*(1.0f - pow((pressure/1013.25f), 0.190284f));
+      Serial.print("Altitude = "); 
+      Serial.print(altitude, 2); 
+      Serial.println(" feet");
+      Serial.println(" ");
+    }
     
     Serial.print("rate = "); Serial.print((float)sumCount/sum, 2); Serial.println(" Hz");
-    }
+ //     Serial.print(millis()/1000.0, 1);Serial.print(",");
+ //     Serial.print(yaw); Serial.print(",");Serial.print(pitch); Serial.print(",");Serial.print(roll); Serial.print(",");
+ //     Serial.print(Yaw); Serial.print(",");Serial.print(Pitch); Serial.print(",");Serial.println(Roll);  
+   
  
     digitalWrite(myLed, !digitalRead(myLed));
     count = millis(); 
@@ -1556,6 +1605,20 @@ void MPU9250SelfTest(float * destination) // Should return percent deviation fro
      destination[i+3] = 100.0*((float)(gSTAvg[i] - gAvg[i]))/factoryTrim[i+3]; // Report percent differences
    }
    
+}
+
+int16_t readSENtralBaroData()
+{
+  uint8_t rawData[2];  // x/y/z gyro register data stored here
+  readBytes(EM7180_ADDRESS, EM7180_Baro, 2, &rawData[0]);  // Read the two raw data registers sequentially into data array
+  return  (int16_t) (((int16_t)rawData[1] << 8) | rawData[0]);   // Turn the MSB and LSB into a signed 16-bit value
+}
+
+int16_t readSENtralTempData()
+{
+  uint8_t rawData[2];  // x/y/z gyro register data stored here
+  readBytes(EM7180_ADDRESS, EM7180_Temp, 2, &rawData[0]);  // Read the two raw data registers sequentially into data array
+  return  (int16_t) (((int16_t)rawData[1] << 8) | rawData[0]);   // Turn the MSB and LSB into a signed 16-bit value
 }
 
 
