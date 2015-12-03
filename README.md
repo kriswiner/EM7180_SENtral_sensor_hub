@@ -3,7 +3,7 @@ EM7180_SENtral_sensor_hub
 
 ![](https://cloud.githubusercontent.com/assets/6698410/11551753/019db928-9931-11e5-99bf-5ede3555a8d8.jpg)
 
-*EM7180 sensor hub with Invensense's MPU9250 gyro/accelerometer with embedded Asahi Kasei AK8963C magnetometer, Bosch's BMP280 Barometer, and ST's M24512DFC I2C EEPROM on a board directly mountable onto the Teensy Cortex ARM M4 microcontroller.*
+*EM7180 sensor hub with Invensense's MPU9250 gyro/accelerometer with embedded Asahi Kasei AK8963C magnetometer, Measurement Specialties' MS5637 Barometer, and ST's M24512DFC I2C EEPROM on a board directly mountable onto the Teensy Cortex ARM M4 microcontroller.*
 
 There are two kinds of files in this repository. 
 
