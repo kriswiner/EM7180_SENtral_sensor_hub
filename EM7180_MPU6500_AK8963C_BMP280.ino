@@ -736,7 +736,7 @@ if(errorStatus == 0x11) Serial.print("Magnetometer failure!");
     az = (float)accelCount[2]*0.000488;  
   }
   
-   if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x20) { // new gyro data available
+   if(eventStatus & 0x20) { // new gyro data available
     readSENtralGyroData(gyroCount);
   
     // Now we'll calculate the gyro value into actual dps's
@@ -745,7 +745,7 @@ if(errorStatus == 0x11) Serial.print("Magnetometer failure!");
     gz = (float)gyroCount[2]*0.153;  
    }
 
-  if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x08) { // new mag data available
+  if(eventStatus & 0x08) { // new mag data available
     readSENtralMagData(magCount);
   
     // Now we'll calculate the mag value into actual G's
@@ -754,7 +754,7 @@ if(errorStatus == 0x11) Serial.print("Magnetometer failure!");
     mz = (float)magCount[2]*0.305176;  
    }
    
-    if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x04) { // new quaternion data available
+    if(eventStatus & 0x04) { // new quaternion data available
     readSENtralQuatData(Quat); 
    }
   }
