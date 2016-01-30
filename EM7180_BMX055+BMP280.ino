@@ -812,7 +812,7 @@ void loop()
     az = (float)accelCount[2]*0.000488;  
   }
   
-   if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x20) { // new gyro data available
+   if(eventStatus & 0x20) { // new gyro data available
     readSENtralGyroData(gyroCount);
   
     // Now we'll calculate the gyro value into actual dps's
@@ -821,7 +821,7 @@ void loop()
     gz = (float)gyroCount[2]*0.153;  
    }
 
-  if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x08) { // new mag data available
+  if(eventStatus & 0x08) { // new mag data available
     readSENtralMagData(magCount);
   
     // Calculate the magnetometer values in milliGauss
