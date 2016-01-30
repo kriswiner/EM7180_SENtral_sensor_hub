@@ -513,7 +513,7 @@ void loop()
       az = (float)accelCount[2]*0.000488;  
     }
   
-    if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x20)
+    if(eventStatus & 0x20)
     {
       // new gyro data available  
       readSENtralGyroData(gyroCount);
@@ -523,7 +523,8 @@ void loop()
       gy = (float)gyroCount[1]*0.153;    
       gz = (float)gyroCount[2]*0.153;  
     }
-    if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x08)
+    
+    if(eventStatus & 0x08)
     {
       // new mag data available
       readSENtralMagData(magCount);
@@ -534,11 +535,16 @@ void loop()
       my = (float)magCount[1]*0.305176;    
       mz = (float)magCount[2]*0.305176;  
     }
+
+    if(eventStatus & 0x04)  // new quaternions available
+    {
     readSENtralQuatData(Quat); 
+    }
 
     // get BMP280 pressure
     // new baro data available
-    if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x40)
+    
+    if(eventStatus & 0x40)
     { 
       rawPressure = readSENtralBaroData();
       pressure = (float)rawPressure*0.01f +1013.25f; // pressure in mBar
