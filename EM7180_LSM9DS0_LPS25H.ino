@@ -808,7 +808,7 @@ void loop()
     }
     
     // get LPS25H pressure
- //  if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x40) { // new baro data available
+   if(eventStatus & 0x40) { // new baro data available
  //   Serial.println("new Baro data!");
     rawPressure = readSENtralBaroData();
     Pressure = (float) rawPressure*3000.; // pressure in mBar
