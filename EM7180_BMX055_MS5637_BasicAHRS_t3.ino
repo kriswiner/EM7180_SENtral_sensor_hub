@@ -754,7 +754,7 @@ void loop()
     mz = (float)magCount[2]*0.305176;  
    }
    
-    if(readByte(EM7180_ADDRESS, EM7180_EventStatus) & 0x04) { // new quaternion data available
+    if(eventStatus & 0x04) { // new quaternion data available
     readSENtralQuatData(Quat); 
    }
   }
