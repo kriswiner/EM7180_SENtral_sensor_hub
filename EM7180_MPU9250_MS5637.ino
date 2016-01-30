@@ -816,7 +816,7 @@ void loop()
    if(eventStatus & 0x40) { // new baro data available
  //   Serial.println("new Baro data!");
     rawPressure = readSENtralBaroData();
-    pressure = (float)rawPressure*0.01f +1013.25f; // pressure in mBar
+    pressure = (float)rawPressure*0.01f + 1013.25f; // pressure in mBar
 
     // get MS5637 temperature
     rawTemperature = readSENtralTempData();  
