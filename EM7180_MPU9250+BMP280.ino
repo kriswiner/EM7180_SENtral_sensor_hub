@@ -285,7 +285,7 @@
 #define AK8963_ADDRESS           0x0C   // Address of magnetometer
 #define BMP280_ADDRESS           0x76   // Address of BMP280 altimeter when ADO = 0
 
-#define SerialDebug false  // set to true to get Serial output for debugging
+#define SerialDebug true  // set to true to get Serial output for debugging
 
 // Set initial input parameters
 enum Ascale {
@@ -808,7 +808,7 @@ void loop()
    
     if(eventStatus & 0x04) { // new quaternion data available
     readSENtralQuatData(Quat); 
- //  }
+   }
 
  // get BMP280 pressure
    if(eventStatus & 0x40) { // new baro data available
@@ -980,10 +980,10 @@ void loop()
       Serial.println(" ");
     }
     
- //   Serial.print("rate = "); Serial.print((float)sumCount/sum, 2); Serial.println(" Hz");
-      Serial.print(millis()/1000.0, 1);Serial.print(",");
-      Serial.print(yaw); Serial.print(",");Serial.print(pitch); Serial.print(",");Serial.print(roll); Serial.print(",");
-      Serial.print(Yaw); Serial.print(",");Serial.print(Pitch); Serial.print(",");Serial.println(Roll);  
+    Serial.print("rate = "); Serial.print((float)sumCount/sum, 2); Serial.println(" Hz");
+ //     Serial.print(millis()/1000.0, 1);Serial.print(",");
+ //     Serial.print(yaw); Serial.print(",");Serial.print(pitch); Serial.print(",");Serial.print(roll); Serial.print(",");
+ //     Serial.print(Yaw); Serial.print(",");Serial.print(Pitch); Serial.print(",");Serial.println(Roll);  
    
  
     digitalWrite(myLed, !digitalRead(myLed));
