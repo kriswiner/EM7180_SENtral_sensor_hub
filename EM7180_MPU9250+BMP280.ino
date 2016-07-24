@@ -762,7 +762,7 @@ void loop()
   if(eventStatus & 0x02) { // error detected, what is it?
   
   uint8_t errorStatus = readByte(EM7180_ADDRESS, EM7180_ErrorRegister);
-  if(!errorStatus) {
+  if(errorStatus != 0x00) { // non-zero value indicates error, what is it?
   Serial.print(" EM7180 sensor status = "); Serial.println(errorStatus);
   if(errorStatus == 0x11) Serial.print("Magnetometer failure!");
   if(errorStatus == 0x12) Serial.print("Accelerometer failure!");
