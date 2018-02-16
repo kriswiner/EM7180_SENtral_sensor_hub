@@ -872,7 +872,7 @@ void loop()
   // This orientation choice can be modified to allow any convenient (non-NED) orientation convention.
   // This is ok by aircraft orientation standards!  
   // Pass gyro rate as rad/s
-    MadgwickQuaternionUpdate(-ay, -ax, az, gy*PI/180.0f, gx*PI/180.0f, -gz*PI/180.0f,  mx,  my, mz);
+    MadgwickQuaternionUpdate(ax, ay, az, gy*PI/180.0f, gx*PI/180.0f, -gz*PI/180.0f,  mx,  my, mz);
 //  if(passThru)MahonyQuaternionUpdate(-ay, -ax, az, gy*PI/180.0f, gx*PI/180.0f, -gz*PI/180.0f,  mx,  my, mz);
 
     // Serial print and/or display at 0.5 s rate independent of data rates
