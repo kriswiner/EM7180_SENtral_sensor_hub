@@ -1,0 +1,1 @@
+Sketch for the newest Ultimate Sensor Fusion Solution using the latest ST motion sensors: ombination accel/gyro LSM6DSM, magnetometer LIS2MDL, and barometer LPS22HB. Now sold on [Tindie](https://www.tindie.com/products/onehorse/ultimate-sensor-fusion-solution-lsm6dsm--lis2md/).
