@@ -1,1 +1,1 @@
-Sample sketch for the EM7180 as mster to LSM6DSM accel/gyro, LIS2MDL magnetometer, and LPS22HB barometer. Should be able to run on any Arduino-compatible platform.
+Sample sketch for the EM7180 as mster to LSM6DSM accel/gyro, LIS2MDL magnetometer, and LPS22HB barometer. Should be able to run on any Arduino-compatible platform. Intended for master (normal) mode use, passthrough mode might need some work to get it to function (mostly setting up the interrupts properly).
